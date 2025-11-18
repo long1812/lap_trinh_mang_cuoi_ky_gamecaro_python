@@ -74,7 +74,7 @@ class ClientHandler(threading.Thread):
         if t == "register":
             nick = msg.get("nick"); pwd = msg.get("password")
             if not nick or not pwd:
-                send_line(self.conn, {"type":"register fail","reason":"missing"})
+                send_line(self.conn, {"type":"register_fail","reason":"missing"})
                 return
             with users_lock:
                 if nick in users:
@@ -84,7 +84,7 @@ class ClientHandler(threading.Thread):
                     save_users()
                     ranks.setdefault(nick, {"wins":0,"losses":0})
                     save_ranks()
-                    send_line(self.conn, {"type":"register ok","nick":nick})
+                    send_line(self.conn, {"type":"register_ok","nick":nick})
         elif t == "login":
             nick = msg.get("nick"); pwd = msg.get("password")
             with users_lock:
@@ -157,10 +157,10 @@ class ClientHandler(threading.Thread):
     def join_room(self, name):
         room = rooms.get(name)
         if not room:
-            send_line(self.conn, {"type":"error","message":"room not found"})
+            send_line(self.conn, {"type":"error","message":"room_not_found"})
             return
         if len(room["players"]) >= 2:
-            send_line(self.conn, {"type":"error","message":"room full"})
+            send_line(self.conn, {"type":"error","message":"room_full"})
             return
         room["players"].append(self)
         room["nicks"].append(self.nick)
@@ -199,13 +199,13 @@ class ClientHandler(threading.Thread):
     def handle_move(self, room_name, x, y):
         room = rooms.get(room_name)
         if not room:
-            send_line(self.conn, {"type":"error","message":"room not found"})
+            send_line(self.conn, {"type":"error","message":"room_not_found"})
             return
         if room["status"] != "playing":
-            send_line(self.conn, {"type":"error","message":"not playing"})
+            send_line(self.conn, {"type":"error","message":"not_playing"})
             return
         if self.nick != room["turn"]:
-            send_line(self.conn, {"type":"error","message":"not your turn"})
+            send_line(self.conn, {"type":"error","message":"not_your_turn"})
             return
         if x < 0 or y < 0 or x >= BOARD_SIZE or y >= BOARD_SIZE:
             send_line(self.conn, {"type":"error","message":"invalid_move"})
@@ -250,7 +250,7 @@ class ClientHandler(threading.Thread):
     def handle_chat(self, room_name, text):
         room = rooms.get(room_name)
         if not room:
-            send_line(self.conn, {"type":"error","message":"room not found"})
+            send_line(self.conn, {"type":"error","message":"room_not_found"})
             return
         payload = {"type":"chat","room":room_name,"from":self.nick,"text":text}
         for p in room["players"]:
@@ -269,7 +269,7 @@ class ClientHandler(threading.Thread):
     def handle_surrender(self, room_name):
         room = rooms.get(room_name)
         if not room or room["status"] != "playing":
-            send_line(self.conn, {"type":"error","message":"room not playing"})
+            send_line(self.conn, {"type":"error","message":"room_not_playing"})
             return
         opponent = None
         for p in room["players"]:
@@ -292,7 +292,7 @@ class ClientHandler(threading.Thread):
                 send_line(p.conn, {"type":"info","message":"you have surrendered"})
             else:
                 send_line(p.conn, {"type":"info","message":f"Player {self.nick} has surrendered. You win!"})
-            send_line(p.conn, {"type":"rank update","rank":ranks.get(p.nick,{"wins":0,"losses":0})})
+            send_line(p.conn, {"type":"rank_update","rank":ranks.get(p.nick,{"wins":0,"losses":0})})
 
         time.sleep(1)
         self.handle_restart(room_name)
@@ -347,6 +347,11 @@ def accept_loop(server_sock):
     while True:
         conn, addr = server_sock.accept()
         print("Accepted", addr)
+        # disable Nagle on accepted connection for lower latency on small JSON messages
+        try:
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
         handler = ClientHandler(conn, addr)
         with clients_lock:
             clients.add(handler)

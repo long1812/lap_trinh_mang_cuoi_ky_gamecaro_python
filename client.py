@@ -35,6 +35,11 @@ class NetClient(threading.Thread):
 
     def connect(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # disable Nagle so small JSON lines are sent immediately
+        try:
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
         self.sock.connect((self.host, self.port))
         self.running = True
         self.start()
